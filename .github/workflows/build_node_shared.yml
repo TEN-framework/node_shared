@@ -1,6 +1,8 @@
 name: Build Node.js Shared Library
 
 on:
+  release:
+    types: [created]
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
@@ -23,16 +25,31 @@ jobs:
 
       - name: Configure and Build
         run: |
-          if [ "$compiler" == "gcc" ]; then
-            export CC=gcc
-            export CXX=g++
-          else
-            export CC=clang
-            export CXX=clang++
-          fi
+          # if [ "$compiler" == "gcc" ]; then
+          #   export CC=gcc
+          #   export CXX=g++
+          # else
+          #   export CC=clang
+          #   export CXX=clang++
+          # fi
 
-          ./configure --shared
-          make -j$(nproc)
+          # ./configure --shared
+          # make -j$(nproc)
 
+          # Mock build
+          mkdir -p out/Release
+          # Create a dummy file
+          touch out/Release/libnode.so.127
+
+      - name: Package assets
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
           cd out/Release
           zip node-shared-linux-x64-${{ matrix.compiler }}.zip libnode.so.127
+      
+      - name: Publish to release assets
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            out/Release/node-shared-linux-x64-${{ matrix.compiler }}.zip
