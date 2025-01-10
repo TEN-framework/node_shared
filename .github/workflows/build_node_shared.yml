@@ -26,7 +26,7 @@ jobs:
 
       - name: Configure and Build
         run: |
-          if [ "${{ matrix.compiler }}" == "gcc" ]; then
+          if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
             export CC=gcc
             export CXX=g++
           else
@@ -34,7 +34,7 @@ jobs:
             export CXX=clang++
           fi
 
-          if [ "${{ matrix.build_type }}" == "debug" ]; then
+          if [[ "${{ matrix.build_type }}" == "debug" ]]; then
             ./configure --shared --debug
           else
             ./configure --shared
@@ -51,7 +51,10 @@ jobs:
             cd out/Release
           fi
 
-          zip node-shared-linux-x64-${{ matrix.compiler }}-${{ matrix.build_type }}.zip libnode.so.127
+          # rename the file libnode.so.127 to libnode.so
+          mv libnode.so.127 libnode.so
+
+          zip node-shared-linux-x64-${{ matrix.compiler }}-${{ matrix.build_type }}.zip libnode.so
       
       - name: Publish to release assets
         uses: softprops/action-gh-release@v2
