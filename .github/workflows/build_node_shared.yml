@@ -34,5 +34,7 @@ jobs:
           ./configure --shared
           make -j$(nproc)
 
+      - name: Package assets
+        run: |
           cd out/Release
           zip node-shared-linux-x64-${{ matrix.compiler }}.zip libnode.so.127
