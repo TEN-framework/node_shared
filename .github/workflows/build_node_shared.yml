@@ -13,8 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [gcc, clang]
-        build_type: [debug, release]          
+        compiler: [gcc, clang]          
     container:
       image: ghcr.io/ten-framework/ten_building_ubuntu2204
     steps:
@@ -34,35 +33,23 @@ jobs:
             export CXX=clang++
           fi
 
-          if [ "${{ matrix.build_type }}" = "debug" ]; then
-            ./configure --shared --debug
-          else
-            ./configure --shared
-          fi
+          ./configure --shared
 
           make -j$(nproc)
 
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          if [ "${{ matrix.build_type }}" = "debug" ]; then
-            cd out/Debug
-          else
-            cd out/Release
-          fi
+          cd out/Release
 
-          # rename the file libnode.so.127 to libnode.so
-          mv libnode.so.127 libnode.so
+          # ln -s libnode.so.127 libnode.so
+          ln -s libnode.so.127 libnode.so
 
-          zip node-shared-linux-x64-${{ matrix.compiler }}-${{ matrix.build_type }}.zip libnode.so
+          zip node-shared-linux-x64-${{ matrix.compiler }}.zip libnode.so libnode.so.127
       
       - name: Publish to release assets
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            if [ "${{ matrix.build_type }}" = "debug" ]; then
-              out/Debug/node-shared-linux-x64-${{ matrix.compiler }}-${{ matrix.build_type }}.zip
-            else
-              out/Release/node-shared-linux-x64-${{ matrix.compiler }}-${{ matrix.build_type }}.zip
-            fi
+            out/Release/node-shared-linux-x64-${{ matrix.compiler }}.zip
