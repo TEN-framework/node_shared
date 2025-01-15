@@ -42,11 +42,8 @@ jobs:
         run: |
           cd out/Release
 
-          # Create symbolic link for libnode.so
-          ln -s libnode.so.127 libnode.so
-
           # Package shared libraries into zip archive
-          zip -y node-shared-linux-x64-${{ matrix.compiler }}.zip libnode.so libnode.so.127
+          zip node-shared-linux-x64-${{ matrix.compiler }}.zip libnode.so.127
       
       - name: Publish to release assets
         uses: softprops/action-gh-release@v2
