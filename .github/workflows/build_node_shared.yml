@@ -47,11 +47,11 @@ jobs:
           repository: nodejs/node
           ref: v22.12.0
 
-      - name: Install dependencies (macOS)
+      - name: Setup Python (macOS)
         if: matrix.platform == 'mac'
-        run: |
-          brew install python@3.11
-          brew link python@3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Configure and Build
         run: |
