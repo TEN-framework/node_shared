@@ -10,18 +10,48 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [gcc, clang]          
-    container:
-      image: ghcr.io/ten-framework/ten_building_ubuntu2204
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            compiler: gcc
+            container: ghcr.io/ten-framework/ten_building_ubuntu2204
+            lib_name: libnode.so.127
+            nproc_cmd: nproc
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            compiler: clang
+            container: ghcr.io/ten-framework/ten_building_ubuntu2204
+            lib_name: libnode.so.127
+            nproc_cmd: nproc
+          # macOS x64 builds
+          - os: macos-13
+            platform: mac
+            arch: x64
+            compiler: clang
+            container: ""
+            lib_name: libnode.127.dylib
+            nproc_cmd: sysctl -n hw.ncpu
+    
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container != '' && matrix.container || null }}
+    
     steps:
       - name: Checkout Node.js
         uses: actions/checkout@v4
         with:
           repository: nodejs/node
           ref: v22.12.0
+
+      - name: Setup Python (macOS)
+        if: matrix.platform == 'mac'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Configure and Build
         run: |
@@ -35,7 +65,7 @@ jobs:
 
           ./configure --shared
 
-          make -j$(nproc)
+          make -j$(${{ matrix.nproc_cmd }})
 
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
@@ -43,11 +73,11 @@ jobs:
           cd out/Release
 
           # Package shared libraries into zip archive
-          zip node-shared-linux-x64-${{ matrix.compiler }}.zip libnode.so.127
+          zip node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }}
       
       - name: Publish to release assets
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            out/Release/node-shared-linux-x64-${{ matrix.compiler }}.zip
+            out/Release/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip
