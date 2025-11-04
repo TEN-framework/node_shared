@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux builds
+          # Linux x64 builds
           - os: ubuntu-latest
             platform: linux
             arch: x64
@@ -26,6 +26,21 @@ jobs:
             arch: x64
             compiler: clang
             container: ghcr.io/ten-framework/ten_building_ubuntu2204
+            lib_name: libnode.so.127
+            nproc_cmd: nproc
+          # Linux ARM64 builds
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            compiler: gcc
+            container: ""
+            lib_name: libnode.so.127
+            nproc_cmd: nproc
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            compiler: clang
+            container: ""
             lib_name: libnode.so.127
             nproc_cmd: nproc
           # macOS x64 builds
@@ -43,6 +58,21 @@ jobs:
             container: ""
             lib_name: libnode.127.dylib
             nproc_cmd: sysctl -n hw.ncpu
+          # macOS ARM64 builds
+          - os: macos-14
+            platform: mac
+            arch: arm64
+            compiler: gcc
+            container: ""
+            lib_name: libnode.127.dylib
+            nproc_cmd: sysctl -n hw.ncpu
+          - os: macos-14
+            platform: mac
+            arch: arm64
+            compiler: clang
+            container: ""
+            lib_name: libnode.127.dylib
+            nproc_cmd: sysctl -n hw.ncpu
     
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container != '' && matrix.container || null }}
@@ -53,6 +83,15 @@ jobs:
         with:
           repository: nodejs/node
           ref: v22.12.0
+
+      - name: Setup dependencies (Linux ARM64)
+        if: matrix.platform == 'linux' && matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip build-essential
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            sudo apt-get install -y clang
+          fi
 
       - name: Setup Python (macOS)
         if: matrix.platform == 'mac'
