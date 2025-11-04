@@ -44,13 +44,7 @@ jobs:
             lib_name: libnode.so.127
             nproc_cmd: nproc
           # macOS x64 builds
-          - os: macos-13
-            platform: mac
-            arch: x64
-            compiler: gcc
-            container: ""
-            lib_name: libnode.127.dylib
-            nproc_cmd: sysctl -n hw.ncpu
+          # Note: macOS should use Clang (Apple's official toolchain), GCC has compatibility issues
           - os: macos-13
             platform: mac
             arch: x64
@@ -59,7 +53,7 @@ jobs:
             lib_name: libnode.127.dylib
             nproc_cmd: sysctl -n hw.ncpu
           # macOS ARM64 builds
-          # Note: GCC is not supported on Apple Silicon, only Clang is available
+          # Note: Apple Silicon only supports Clang
           - os: macos-14
             platform: mac
             arch: arm64
@@ -93,21 +87,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install GCC (macOS)
-        if: matrix.platform == 'mac' && matrix.compiler == 'gcc'
-        run: |
-          brew install gcc@13
-          echo "CC=$(brew --prefix gcc@13)/bin/gcc-13" >> $GITHUB_ENV
-          echo "CXX=$(brew --prefix gcc@13)/bin/g++-13" >> $GITHUB_ENV
-
       - name: Configure and Build
         run: |
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
-            # CC and CXX already set for macOS GCC via GITHUB_ENV
-            if [ "${{ matrix.platform }}" != "mac" ]; then
-              export CC=gcc
-              export CXX=g++
-            fi
+            export CC=gcc
+            export CXX=g++
           else
             export CC=clang
             export CXX=clang++
