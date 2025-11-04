@@ -32,6 +32,13 @@ jobs:
           - os: macos-13
             platform: mac
             arch: x64
+            compiler: gcc
+            container: ""
+            lib_name: libnode.127.dylib
+            nproc_cmd: sysctl -n hw.ncpu
+          - os: macos-13
+            platform: mac
+            arch: x64
             compiler: clang
             container: ""
             lib_name: libnode.127.dylib
@@ -53,11 +60,21 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install GCC (macOS)
+        if: matrix.platform == 'mac' && matrix.compiler == 'gcc'
+        run: |
+          brew install gcc@13
+          echo "CC=$(brew --prefix gcc@13)/bin/gcc-13" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix gcc@13)/bin/g++-13" >> $GITHUB_ENV
+
       - name: Configure and Build
         run: |
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
-            export CC=gcc
-            export CXX=g++
+            # CC and CXX already set for macOS GCC via GITHUB_ENV
+            if [ "${{ matrix.platform }}" != "mac" ]; then
+              export CC=gcc
+              export CXX=g++
+            fi
           else
             export CC=clang
             export CXX=clang++
