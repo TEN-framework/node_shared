@@ -59,13 +59,7 @@ jobs:
             lib_name: libnode.127.dylib
             nproc_cmd: sysctl -n hw.ncpu
           # macOS ARM64 builds
-          - os: macos-14
-            platform: mac
-            arch: arm64
-            compiler: gcc
-            container: ""
-            lib_name: libnode.127.dylib
-            nproc_cmd: sysctl -n hw.ncpu
+          # Note: GCC is not supported on Apple Silicon, only Clang is available
           - os: macos-14
             platform: mac
             arch: arm64
