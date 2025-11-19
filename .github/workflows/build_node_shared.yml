@@ -99,6 +99,7 @@ jobs:
 
       - name: Configure and Build (Linux ARM64 with QEMU)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
+        timeout-minutes: 720  # 12 hours for QEMU emulation
         run: |
           docker run --rm --platform linux/arm64 \
             -v $(pwd):${{ github.workspace }} -w ${{ github.workspace }} \
@@ -111,8 +112,8 @@ jobs:
                 export CC=clang
                 export CXX=clang++
               fi && \
-              ./configure --shared && \
-              make -j\$(nproc)
+              ./configure --shared --without-npm --without-corepack && \
+              make -j2
             "
 
       - name: Configure and Build (Linux x64 and macOS)
