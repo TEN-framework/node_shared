@@ -29,18 +29,11 @@ jobs:
             container: ghcr.io/ten-framework/ten_building_ubuntu2204
             lib_name: libnode.so.127
             nproc_cmd: nproc
-          # Linux ARM64 builds (using QEMU)
+          # Linux ARM64 builds (using QEMU) - only GCC due to 6h timeout limit
           - os: ubuntu-latest
             platform: linux
             arch: arm64
             compiler: gcc
-            container: ""
-            lib_name: libnode.so.127
-            nproc_cmd: nproc
-          - os: ubuntu-latest
-            platform: linux
-            arch: arm64
-            compiler: clang
             container: ""
             lib_name: libnode.so.127
             nproc_cmd: nproc
@@ -112,8 +105,15 @@ jobs:
                 export CC=clang
                 export CXX=clang++
               fi && \
-              ./configure --shared --without-npm --without-corepack && \
-              make -j2
+              ./configure --shared \
+                --without-npm \
+                --without-corepack \
+                --without-inspector \
+                --without-intl \
+                --without-etw \
+                --without-dtrace \
+                --without-report && \
+              make -j1
             "
 
       - name: Configure and Build (Linux x64 and macOS)
