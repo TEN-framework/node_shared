@@ -10,6 +10,7 @@ on:
 
 jobs:
   build:
+    timeout-minutes: 720  # 12 hours (QEMU ARM64 builds are slow)
     strategy:
       matrix:
         include:
