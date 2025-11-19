@@ -29,11 +29,18 @@ jobs:
             container: ghcr.io/ten-framework/ten_building_ubuntu2204
             lib_name: libnode.so.127
             nproc_cmd: nproc
-          # Linux ARM64 builds (using cross-compilation) - only GCC due to toolchain availability
+          # Linux ARM64 builds (using cross-compilation)
           - os: ubuntu-latest
             platform: linux
             arch: arm64
             compiler: gcc
+            container: ghcr.io/ten-framework/ten_building_ubuntu2204
+            lib_name: libnode.so.127
+            nproc_cmd: nproc
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            compiler: clang
             container: ghcr.io/ten-framework/ten_building_ubuntu2204
             lib_name: libnode.so.127
             nproc_cmd: nproc
@@ -71,6 +78,9 @@ jobs:
         run: |
           apt-get update
           apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            apt-get install -y clang llvm
+          fi
 
       - name: Setup Python (macOS)
         if: matrix.platform == 'mac'
@@ -81,10 +91,17 @@ jobs:
       - name: Configure and Build (Linux ARM64 with cross-compilation)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
         run: |
-          export CC=aarch64-linux-gnu-gcc
-          export CXX=aarch64-linux-gnu-g++
-          export CC_host=gcc
-          export CXX_host=g++
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then
+            export CC=aarch64-linux-gnu-gcc
+            export CXX=aarch64-linux-gnu-g++
+            export CC_host=gcc
+            export CXX_host=g++
+          else
+            export CC="clang --target=aarch64-linux-gnu"
+            export CXX="clang++ --target=aarch64-linux-gnu"
+            export CC_host=clang
+            export CXX_host=clang++
+          fi
           
           ./configure --shared \
             --dest-cpu=arm64 \
