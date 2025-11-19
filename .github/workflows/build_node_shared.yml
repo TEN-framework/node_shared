@@ -29,12 +29,12 @@ jobs:
             container: ghcr.io/ten-framework/ten_building_ubuntu2204
             lib_name: libnode.so.127
             nproc_cmd: nproc
-          # Linux ARM64 builds (using QEMU) - only GCC due to 6h timeout limit
+          # Linux ARM64 builds (using cross-compilation) - only GCC due to toolchain availability
           - os: ubuntu-latest
             platform: linux
             arch: arm64
             compiler: gcc
-            container: ""
+            container: ghcr.io/ten-framework/ten_building_ubuntu2204
             lib_name: libnode.so.127
             nproc_cmd: nproc
           # macOS x64 builds
@@ -66,23 +66,11 @@ jobs:
           repository: nodejs/node
           ref: v22.12.0
 
-      - name: Create out directory (Linux ARM64)
+      - name: Setup cross-compilation toolchain (Linux ARM64)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
         run: |
-          # Due to the use of QEMU, running as root inside the Docker container
-          # is required. However, outside the container, the user is not root.
-          # This causes issues when trying to handle the contents of the out/
-          # folder from outside the container. To resolve this, the out/ folder
-          # is first created by a regular non-root user to prevent it from being
-          # created during the build stage, thus avoiding permission issues with
-          # the out/ folder being created by the root user.
-          mkdir -p out/Release
-
-      - name: Set up QEMU (Linux ARM64)
-        if: matrix.platform == 'linux' && matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+          apt-get update
+          apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Setup Python (macOS)
         if: matrix.platform == 'mac'
@@ -90,26 +78,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Configure and Build (Linux ARM64 with QEMU)
+      - name: Configure and Build (Linux ARM64 with cross-compilation)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
-        timeout-minutes: 720  # 12 hours for QEMU emulation
         run: |
-          docker run --rm --platform linux/arm64 \
-            -v $(pwd):${{ github.workspace }} -w ${{ github.workspace }} \
-            ghcr.io/ten-framework/ten_building_ubuntu2204 \
-            bash -c "
-              if [ '${{ matrix.compiler }}' = 'gcc' ]; then
-                export CC=gcc
-                export CXX=g++
-              else
-                export CC=clang
-                export CXX=clang++
-              fi && \
-              ./configure --shared \
-                --without-npm \
-                --without-corepack && \
-              make -j1
-            "
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+          export CC_host=gcc
+          export CXX_host=g++
+          
+          ./configure --shared \
+            --dest-cpu=arm64 \
+            --cross-compiling \
+            --without-npm \
+            --without-corepack
+          
+          make -j$(nproc)
 
       - name: Configure and Build (Linux x64 and macOS)
         if: matrix.platform != 'linux' || matrix.arch != 'arm64'
@@ -125,11 +108,6 @@ jobs:
           ./configure --shared
 
           make -j$(${{ matrix.nproc_cmd }})
-
-      - name: Fix permissions for build outputs (Linux ARM64)
-        if: matrix.platform == 'linux' && matrix.arch == 'arm64'
-        run: |
-          sudo chown -R "$(id -u)":"$(id -g)" out/Release
 
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
