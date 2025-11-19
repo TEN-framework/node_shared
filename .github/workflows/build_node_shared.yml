@@ -107,12 +107,7 @@ jobs:
               fi && \
               ./configure --shared \
                 --without-npm \
-                --without-corepack \
-                --without-inspector \
-                --without-intl \
-                --without-etw \
-                --without-dtrace \
-                --without-report && \
+                --without-corepack && \
               make -j1
             "
 
