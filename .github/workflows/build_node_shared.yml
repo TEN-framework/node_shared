@@ -62,6 +62,22 @@ jobs:
             container: ""
             lib_name: libnode.127.dylib
             nproc_cmd: sysctl -n hw.ncpu
+          # Windows x64 builds
+          - os: windows-latest
+            platform: win
+            arch: x64
+            compiler: msvc
+            container: ""
+            lib_name: libnode.dll
+            nproc_cmd: $env:NUMBER_OF_PROCESSORS
+          # Windows ARM64 builds (cross-compilation)
+          - os: windows-latest
+            platform: win
+            arch: arm64
+            compiler: msvc
+            container: ""
+            lib_name: libnode.dll
+            nproc_cmd: $env:NUMBER_OF_PROCESSORS
     
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container != '' && matrix.container || null }}
@@ -88,6 +104,18 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Python (Windows)
+        if: matrix.platform == 'win'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Setup MSVC (Windows)
+        if: matrix.platform == 'win'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
       - name: Configure and Build (Linux ARM64 with cross-compilation)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
         run: |
@@ -112,7 +140,7 @@ jobs:
           make -j$(nproc)
 
       - name: Configure and Build (Linux x64 and macOS)
-        if: matrix.platform != 'linux' || matrix.arch != 'arm64'
+        if: matrix.platform != 'win' && (matrix.platform != 'linux' || matrix.arch != 'arm64')
         run: |
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
             export CC=gcc
@@ -126,13 +154,31 @@ jobs:
 
           make -j$(${{ matrix.nproc_cmd }})
 
+      - name: Configure and Build (Windows)
+        if: matrix.platform == 'win'
+        shell: cmd
+        run: |
+          if "${{ matrix.arch }}" == "arm64" (
+            vcbuild.bat dll arm64
+          ) else (
+            vcbuild.bat dll x64
+          )
+
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          cd out/Release
+          if [ "${{ matrix.platform }}" = "win" ]; then
+            cd Release
 
-          # Package shared libraries into zip archive
-          zip node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }}
+            # Package shared libraries into zip archive
+            7z a node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }} libnode.lib node.lib
+          else
+            cd out/Release
+
+            # Package shared libraries into zip archive
+            zip node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }}
+          fi
+        shell: bash
       
       - name: Publish to release assets
         uses: softprops/action-gh-release@v2
@@ -140,3 +186,4 @@ jobs:
         with:
           files: |
             out/Release/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip
+            Release/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip
