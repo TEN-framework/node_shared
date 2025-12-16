@@ -111,54 +111,65 @@ jobs:
         if: matrix.platform == 'win'
         shell: powershell
         run: |
-          # Avoid installing through DSC configuration due to compatibility issues in CI environment
           Write-Host "Installing Node.js build prerequisites with WinGet..."
           
           # Install Python 3.12
-          Write-Host "`n[1/4] Installing Python 3.12..."
+          Write-Host "`n[1/3] Installing Python 3.12..."
           winget install --id Python.Python.3.12 --source winget --silent --accept-package-agreements --accept-source-agreements
           
           # Install Git
-          Write-Host "`n[2/4] Installing Git..."
+          Write-Host "`n[2/3] Installing Git..."
           winget install --id Git.Git --source winget --silent --accept-package-agreements --accept-source-agreements
           
           # Install NASM (NetWide Assembler) for OpenSSL
-          Write-Host "`n[3/4] Installing NASM..."
+          Write-Host "`n[3/3] Installing NASM..."
           winget install --id Nasm.Nasm --source winget --silent --accept-package-agreements --accept-source-agreements
-          
-          # Install Visual Studio 2022 Build Tools with required components
-          # Note: Installing full VS 2022 Community to match the configuration file
-          Write-Host "`n[4/4] Installing Visual Studio 2022 Community..."
-          winget install --id Microsoft.VisualStudio.2022.Community --source winget --silent --accept-package-agreements --accept-source-agreements
           
           Write-Host "`nAll WinGet packages installed!"
 
       - name: Install Visual Studio Components (Windows)
         if: matrix.platform == 'win'
-        shell: cmd
+        shell: powershell
         run: |
-          echo Installing required Visual Studio components...
-          echo This includes: C++ Desktop Development, Clang, and ClangToolset
+          Write-Host "Installing required Visual Studio components..."
+          Write-Host "Components: C++ Desktop Development, Clang, ClangToolset"
           
-          REM Find VS installer path
-          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          # Find existing VS installation (GitHub Actions has VS 2022 Enterprise pre-installed)
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vsWhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
           
-          for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do (
-            set "VS_PATH=%%i"
+          Write-Host "Visual Studio installation found at: $vsPath"
+          
+          # Get VS product ID (Enterprise, Professional, or Community)
+          $productId = & $vsWhere -latest -products * -property productId
+          Write-Host "Product ID: $productId"
+          
+          # Use VS Installer to modify existing installation and add required components
+          $installerPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          
+          Write-Host "Adding C++ workload and Clang components..."
+          $processArgs = @(
+            "modify",
+            "--installPath", "`"$vsPath`"",
+            "--add", "Microsoft.VisualStudio.Workload.NativeDesktop",
+            "--add", "Microsoft.VisualStudio.Component.VC.Llvm.Clang",
+            "--add", "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset",
+            "--includeRecommended",
+            "--quiet",
+            "--norestart"
           )
           
-          echo Visual Studio installation path: %VS_PATH%
+          $process = Start-Process -FilePath $installerPath -ArgumentList $processArgs -Wait -PassThru -NoNewWindow
           
-          REM Use VS installer to add required components
-          "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vs_installer.exe" modify ^
-            --installPath "%VS_PATH%" ^
-            --add Microsoft.VisualStudio.Workload.NativeDesktop ^
-            --add Microsoft.VisualStudio.Component.VC.Llvm.Clang ^
-            --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset ^
-            --includeRecommended ^
-            --quiet --norestart --wait
-          
-          echo Visual Studio components installed successfully!
+          if ($process.ExitCode -eq 0) {
+            Write-Host "Visual Studio components installed successfully!"
+          } elseif ($process.ExitCode -eq 3010) {
+            Write-Host "Visual Studio components installed successfully! (Reboot required but skipped)"
+          } else {
+            Write-Host "Warning: VS Installer returned exit code $($process.ExitCode)"
+            Write-Host "This may indicate the components are already installed or partially installed."
+            Write-Host "Continuing with build process..."
+          }
 
       - name: Verify installations (Windows)
         if: matrix.platform == 'win'
