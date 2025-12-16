@@ -104,11 +104,20 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Setup Python (Windows)
+      # Reference: https://github.com/nodejs/node/blob/v22.12.0/BUILDING.md#option-2-automated-install-with-winget
+      - name: Setup Node.js prerequisites with WinGet (Windows)
         if: matrix.platform == 'win'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+        shell: powershell
+        run: |
+          # Download the WinGet configuration file from Node.js repository
+          $configUrl = "https://raw.githubusercontent.com/nodejs/node/v22.12.0/configuration.dsc.yaml"
+          $configFile = "configuration.dsc.yaml"
+          
+          Write-Host "Downloading WinGet configuration file..."
+          Invoke-WebRequest -Uri $configUrl -OutFile $configFile
+          
+          Write-Host "Installing Node.js prerequisites with WinGet..."
+          winget configure $configFile --accept-configuration-agreements
 
       - name: Setup MSVC (Windows)
         if: matrix.platform == 'win'
