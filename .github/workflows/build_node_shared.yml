@@ -46,7 +46,7 @@ jobs:
             nproc_cmd: nproc
           # macOS x64 builds
           # Note: macOS should use Clang (Apple's official toolchain), GCC has compatibility issues
-          - os: macos-13
+          - os: macos-15-intel
             platform: mac
             arch: x64
             compiler: clang
@@ -55,7 +55,7 @@ jobs:
             nproc_cmd: sysctl -n hw.ncpu
           # macOS ARM64 builds
           # Note: Apple Silicon only supports Clang
-          - os: macos-14
+          - os: macos-latest
             platform: mac
             arch: arm64
             compiler: clang
