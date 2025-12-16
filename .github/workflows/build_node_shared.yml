@@ -109,6 +109,11 @@ jobs:
         if: matrix.platform == 'win'
         shell: powershell
         run: |
+          # Install required PowerShell modules for WinGet DSC
+          Write-Host "Installing PowerShell DSC modules required by WinGet configure..."
+          Install-Module -Name Microsoft.WinGet.DSC -Force -AllowClobber -Scope CurrentUser -Repository PSGallery
+          Install-Module -Name Microsoft.VisualStudio.DSC -Force -AllowClobber -Scope CurrentUser -Repository PSGallery
+          
           # Download the WinGet configuration file from Node.js repository
           $configUrl = "https://raw.githubusercontent.com/nodejs/node/main/.configurations/configuration.dsc.yaml"
           $configFile = "configuration.dsc.yaml"
