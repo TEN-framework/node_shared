@@ -110,7 +110,7 @@ jobs:
         shell: powershell
         run: |
           # Download the WinGet configuration file from Node.js repository
-          $configUrl = "https://raw.githubusercontent.com/nodejs/node/v22.12.0/configuration.dsc.yaml"
+          $configUrl = "https://raw.githubusercontent.com/nodejs/node/main/.configurations/configuration.dsc.yaml"
           $configFile = "configuration.dsc.yaml"
           
           Write-Host "Downloading WinGet configuration file..."
