@@ -46,7 +46,7 @@ jobs:
             nproc_cmd: nproc
           # macOS x64 builds
           # Note: macOS should use Clang (Apple's official toolchain), GCC has compatibility issues
-          - os: macos-13
+          - os: macos-15-intel
             platform: mac
             arch: x64
             compiler: clang
@@ -55,13 +55,29 @@ jobs:
             nproc_cmd: sysctl -n hw.ncpu
           # macOS ARM64 builds
           # Note: Apple Silicon only supports Clang
-          - os: macos-14
+          - os: macos-latest
             platform: mac
             arch: arm64
             compiler: clang
             container: ""
             lib_name: libnode.127.dylib
             nproc_cmd: sysctl -n hw.ncpu
+          # Windows x64 builds
+          - os: windows-latest
+            platform: win
+            arch: x64
+            compiler: msvc
+            container: ""
+            lib_name: libnode.dll
+            nproc_cmd: $env:NUMBER_OF_PROCESSORS
+          # Windows ARM64 builds (cross-compilation)
+          - os: windows-latest
+            platform: win
+            arch: arm64
+            compiler: msvc
+            container: ""
+            lib_name: libnode.dll
+            nproc_cmd: $env:NUMBER_OF_PROCESSORS
     
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container != '' && matrix.container || null }}
@@ -72,6 +88,65 @@ jobs:
         with:
           repository: nodejs/node
           ref: v22.12.0
+
+      # Ref: https://github.com/nodejs/help/issues/5070
+      #      https://forum.qt.io/topic/162305/possible-marking-state.h-chromium-bug-when-compiling-qtwebengine-from-source/2
+      - name: Patch V8 for MSVC compatibility (Windows)
+        if: matrix.platform == 'win'
+        shell: powershell
+        run: |
+          Write-Host "========== Applying V8 MSVC Compatibility Patch =========="
+          Write-Host "Issue: MSVC C2352 error - non-static member function requires an object"
+          Write-Host "Affected file: deps\v8\src\heap\cppgc\marking-state.h"
+          Write-Host "Reference: https://forum.qt.io/topic/162305"
+          Write-Host ""
+          
+          $file = "deps\v8\src\heap\cppgc\marking-state.h"
+          
+          if (!(Test-Path $file)) {
+            Write-Host "ERROR: $file not found!"
+            exit 1
+          }
+          
+          Write-Host "Reading file..."
+          $lines = Get-Content $file
+          $modified = $false
+          $lineNumber = 0
+          
+          $newLines = foreach ($line in $lines) {
+            $lineNumber++
+            $originalLine = $line
+            
+            # Fix: MutatorMarkingState::BasicMarkingState::MarkNoPush(header)
+            # ->   BasicMarkingState::MarkNoPush(header)
+            if ($line -match 'MutatorMarkingState::BasicMarkingState::MarkNoPush\(') {
+              $line = $line -replace 'MutatorMarkingState::BasicMarkingState::MarkNoPush\(', 'BasicMarkingState::MarkNoPush('
+              Write-Host "  Line $lineNumber : Fixed qualified scope call"
+              $modified = $true
+            }
+            
+            # Fix: return MarkingStateBase::MarkNoPush(
+            # ->   return this->MarkNoPush(
+            if ($line -match '\s+return\s+MarkingStateBase::MarkNoPush\(') {
+              $line = $line -replace 'return\s+MarkingStateBase::MarkNoPush\(', 'return this->MarkNoPush('
+              Write-Host "  Line $lineNumber : Fixed base class call"
+              $modified = $true
+            }
+            
+            $line
+          }
+          
+          if ($modified) {
+            Set-Content $file -Value $newLines
+            Write-Host ""
+            Write-Host "Successfully patched $file"
+          } else {
+            Write-Host ""
+            Write-Host "No matching patterns found (file may already be patched or have different code)"
+            Write-Host "Build will continue, but may still fail with C2352 error"
+          }
+          
+          Write-Host "========== Patch Complete =========="
 
       - name: Setup cross-compilation toolchain (Linux ARM64)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
@@ -87,6 +162,148 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # Reference: https://github.com/nodejs/node/blob/v22.12.0/BUILDING.md#option-2-automated-install-with-winget
+      #            https://github.com/nodejs/node/blob/v22.12.0/.configurations/configuration.vsEnterprise.dsc.yaml
+      # Using direct winget install commands instead of DSC configuration due to compatibility issues in CI environment
+      - name: Setup Node.js prerequisites with WinGet (Windows)
+        if: matrix.platform == 'win'
+        shell: powershell
+        run: |
+          Write-Host "Installing Node.js build prerequisites with WinGet..."
+          
+          # Install Python 3.12
+          Write-Host "`n[1/3] Installing Python 3.12..."
+          winget install --id Python.Python.3.12 --source winget --silent --accept-package-agreements --accept-source-agreements
+          
+          # Install Git
+          Write-Host "`n[2/3] Installing Git..."
+          winget install --id Git.Git --source winget --silent --accept-package-agreements --accept-source-agreements
+          
+          # Install NASM (NetWide Assembler) for OpenSSL
+          Write-Host "`n[3/3] Installing NASM..."
+          winget install --id Nasm.Nasm --source winget --silent --accept-package-agreements --accept-source-agreements
+          
+          Write-Host "`nAll WinGet packages installed!"
+
+      - name: Install Visual Studio Components (Windows)
+        if: matrix.platform == 'win'
+        shell: powershell
+        run: |
+          Write-Host "Installing required Visual Studio components..."
+          Write-Host "Components: C++ Desktop Development, Clang, ClangToolset"
+          
+          # Find existing VS installation (GitHub Actions has VS 2022 Enterprise pre-installed)
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vsWhere -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+        
+          Write-Host "Visual Studio installation found at: $vsPath"
+          
+          # Get VS product ID
+          $productId = & $vsWhere -path "$vsPath" -property productId
+          Write-Host "Product ID: $productId"
+          
+          # Use VS Installer to add required components
+          # Note: Using --passive instead of --quiet to see progress, and allow warnings
+          $installerPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          
+          Write-Host "`nAdding required components (this may take 10-20 minutes)..."
+          & $installerPath modify `
+            --installPath "$vsPath" `
+            --add Microsoft.VisualStudio.Workload.NativeDesktop `
+            --add Microsoft.VisualStudio.Component.VC.Llvm.Clang `
+            --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset `
+            --includeRecommended `
+            --quiet `
+            --norestart `
+            --wait
+          
+          $exitCode = $LASTEXITCODE
+          
+          if ($exitCode -eq 0) {
+            Write-Host ""
+            Write-Host "[OK] Visual Studio components installed successfully!"
+          } elseif ($exitCode -eq 3010) {
+            Write-Host ""
+            Write-Host "[OK] Visual Studio components installed successfully! (Reboot requested but skipped)"
+          } elseif ($exitCode -eq 1641) {
+            Write-Host ""
+            Write-Host "[OK] Visual Studio components installed successfully! (Restart initiated)"
+          } else {
+            Write-Host ""
+            Write-Host "[WARN] VS Installer returned exit code: $exitCode"
+            if ($exitCode -eq 87) {
+              Write-Host "Exit code 87 usually means components are already installed or parameters are incorrect."
+              Write-Host "Continuing with build process..."
+            } else {
+              Write-Host "Warning: Unexpected exit code. Continuing anyway..."
+            }
+          }
+
+      - name: Verify installations (Windows)
+        if: matrix.platform == 'win'
+        shell: powershell
+        run: |
+          Write-Host "Verifying installed tools:"
+          Write-Host "=========================="
+          
+          # Refresh PATH
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          
+          Write-Host "`nPython:"
+          python --version
+          
+          Write-Host "`nGit:"
+          git --version
+          
+          Write-Host "`nNASM:"
+          nasm -v
+          
+          Write-Host "`n--- Visual Studio Information ---"
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          
+          Write-Host "`nVisual Studio 2022 Enterprise:"
+          $vsPath = & $vsWhere -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+          
+          if ([string]::IsNullOrEmpty($vsPath)) {
+            Write-Host "WARNING: VS 2022 Enterprise not found! Looking for any VS installation..."
+            $vsPath = & $vsWhere -latest -products * -property installationPath
+          }
+          
+          Write-Host "Installation path: $vsPath"
+          
+          $displayName = & $vsWhere -path "$vsPath" -property displayName
+          $version = & $vsWhere -path "$vsPath" -property installationVersion
+          $productId = & $vsWhere -path "$vsPath" -property productId
+          
+          Write-Host "Product: $displayName"
+          Write-Host "Version: $version"
+          Write-Host "Product ID: $productId"
+          
+          Write-Host "`nSearching for MSVC and Clang compilers:"
+          $clPath = & $vsWhere -path "$vsPath" -find "**/Hostx64/x64/cl.exe" | Select-Object -First 1
+          $clangPath = & $vsWhere -path "$vsPath" -find "**/bin/Hostx64/clang.exe" | Select-Object -First 1
+          
+          if ($clPath) {
+            Write-Host "  [OK] MSVC cl.exe: $clPath"
+          } else {
+            Write-Host "  [NOT FOUND] MSVC cl.exe"
+          }
+          
+          if ($clangPath) {
+            Write-Host "  [OK] Clang: $clangPath"
+          } else {
+            Write-Host "  [NOT FOUND] Clang (May need to install C++ workload)"
+          }
+          
+          Write-Host "`n=========================================="
+          Write-Host "Prerequisites verification completed!"
+
+      - name: Setup MSVC (Windows)
+        if: matrix.platform == 'win'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
 
       - name: Configure and Build (Linux ARM64 with cross-compilation)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
@@ -112,7 +329,7 @@ jobs:
           make -j$(nproc)
 
       - name: Configure and Build (Linux x64 and macOS)
-        if: matrix.platform != 'linux' || matrix.arch != 'arm64'
+        if: matrix.platform != 'win' && (matrix.platform != 'linux' || matrix.arch != 'arm64')
         run: |
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
             export CC=gcc
@@ -126,13 +343,31 @@ jobs:
 
           make -j$(${{ matrix.nproc_cmd }})
 
+      - name: Configure and Build (Windows)
+        if: matrix.platform == 'win'
+        shell: cmd
+        run: |
+          if "${{ matrix.arch }}" == "arm64" (
+            vcbuild.bat dll arm64
+          ) else (
+            vcbuild.bat dll x64
+          )
+
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          cd out/Release
+          if [ "${{ matrix.platform }}" = "win" ]; then
+            cd Release
 
-          # Package shared libraries into zip archive
-          zip node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }}
+            # Package shared libraries into zip archive
+            7z a node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }} libnode.lib node.lib
+          else
+            cd out/Release
+
+            # Package shared libraries into zip archive
+            zip node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }}
+          fi
+        shell: bash
       
       - name: Publish to release assets
         uses: softprops/action-gh-release@v2
@@ -140,3 +375,4 @@ jobs:
         with:
           files: |
             out/Release/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip
+            Release/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip
