@@ -96,7 +96,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host "========== Applying V8 MSVC Compatibility Patch =========="
-          Write-Host "Issue: MSVC C2352 error - 'a call of a non-static member function requires an object'"
+          Write-Host "Issue: MSVC C2352 error - non-static member function requires an object"
           Write-Host "Affected file: deps\v8\src\heap\cppgc\marking-state.h"
           Write-Host "Reference: https://forum.qt.io/topic/162305"
           Write-Host ""
@@ -104,7 +104,7 @@ jobs:
           $file = "deps\v8\src\heap\cppgc\marking-state.h"
           
           if (!(Test-Path $file)) {
-            Write-Host "✗ ERROR: $file not found!"
+            Write-Host "ERROR: $file not found!"
             exit 1
           }
           
@@ -121,7 +121,7 @@ jobs:
             # ->   BasicMarkingState::MarkNoPush(header)
             if ($line -match 'MutatorMarkingState::BasicMarkingState::MarkNoPush\(') {
               $line = $line -replace 'MutatorMarkingState::BasicMarkingState::MarkNoPush\(', 'BasicMarkingState::MarkNoPush('
-              Write-Host "  Line ${lineNumber}: Fixed qualified scope call"
+              Write-Host "  Line $lineNumber : Fixed qualified scope call"
               $modified = $true
             }
             
@@ -129,7 +129,7 @@ jobs:
             # ->   return this->MarkNoPush(
             if ($line -match '\s+return\s+MarkingStateBase::MarkNoPush\(') {
               $line = $line -replace 'return\s+MarkingStateBase::MarkNoPush\(', 'return this->MarkNoPush('
-              Write-Host "  Line ${lineNumber}: Fixed base class call"
+              Write-Host "  Line $lineNumber : Fixed base class call"
               $modified = $true
             }
             
@@ -139,10 +139,10 @@ jobs:
           if ($modified) {
             Set-Content $file -Value $newLines
             Write-Host ""
-            Write-Host "✓ Successfully patched $file"
+            Write-Host "Successfully patched $file"
           } else {
             Write-Host ""
-            Write-Host "⚠ No matching patterns found (file may already be patched or have different code)"
+            Write-Host "No matching patterns found (file may already be patched or have different code)"
             Write-Host "Build will continue, but may still fail with C2352 error"
           }
           
@@ -164,7 +164,7 @@ jobs:
           python-version: '3.11'
 
       # Reference: https://github.com/nodejs/node/blob/v22.12.0/BUILDING.md#option-2-automated-install-with-winget
-      #            https://raw.githubusercontent.com/nodejs/node/main/.configurations/configuration.dsc.yaml
+      #            https://github.com/nodejs/node/blob/v22.12.0/.configurations/configuration.vsEnterprise.dsc.yaml
       # Using direct winget install commands instead of DSC configuration due to compatibility issues in CI environment
       - name: Setup Node.js prerequisites with WinGet (Windows)
         if: matrix.platform == 'win'
@@ -195,39 +195,45 @@ jobs:
           
           # Find existing VS installation (GitHub Actions has VS 2022 Enterprise pre-installed)
           $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsPath = & $vsWhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
-          
+          $vsPath = & $vsWhere -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+        
           Write-Host "Visual Studio installation found at: $vsPath"
           
-          # Get VS product ID (Enterprise, Professional, or Community)
-          $productId = & $vsWhere -latest -products * -property productId
+          # Get VS product ID
+          $productId = & $vsWhere -path "$vsPath" -property productId
           Write-Host "Product ID: $productId"
           
-          # Use VS Installer to modify existing installation and add required components
+          # Use VS Installer to add required components
+          # Note: Using --passive instead of --quiet to see progress, and allow warnings
           $installerPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           
-          Write-Host "Adding C++ workload and Clang components..."
-          $processArgs = @(
-            "modify",
-            "--installPath", "`"$vsPath`"",
-            "--add", "Microsoft.VisualStudio.Workload.NativeDesktop",
-            "--add", "Microsoft.VisualStudio.Component.VC.Llvm.Clang",
-            "--add", "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset",
-            "--includeRecommended",
-            "--quiet",
-            "--norestart"
-          )
+          Write-Host "`nAdding required components (this may take 10-20 minutes)..."
+          & $installerPath modify `
+            --installPath "$vsPath" `
+            --add Microsoft.VisualStudio.Workload.NativeDesktop `
+            --add Microsoft.VisualStudio.Component.VC.Llvm.Clang `
+            --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset `
+            --includeRecommended `
+            --quiet `
+            --norestart `
+            --wait
           
-          $process = Start-Process -FilePath $installerPath -ArgumentList $processArgs -Wait -PassThru -NoNewWindow
+          $exitCode = $LASTEXITCODE
           
-          if ($process.ExitCode -eq 0) {
-            Write-Host "Visual Studio components installed successfully!"
-          } elseif ($process.ExitCode -eq 3010) {
-            Write-Host "Visual Studio components installed successfully! (Reboot required but skipped)"
+          if ($exitCode -eq 0) {
+            Write-Host "`n✓ Visual Studio components installed successfully!"
+          } elseif ($exitCode -eq 3010) {
+            Write-Host "`n✓ Visual Studio components installed successfully! (Reboot requested but skipped)"
+          } elseif ($exitCode -eq 1641) {
+            Write-Host "`n✓ Visual Studio components installed successfully! (Restart initiated)"
           } else {
-            Write-Host "Warning: VS Installer returned exit code $($process.ExitCode)"
-            Write-Host "This may indicate the components are already installed or partially installed."
-            Write-Host "Continuing with build process..."
+            Write-Host "`n⚠ VS Installer returned exit code: $exitCode"
+            if ($exitCode -eq 87) {
+              Write-Host "Exit code 87 usually means components are already installed or parameters are incorrect."
+              Write-Host "Continuing with build process..."
+            } else {
+              Write-Host "Warning: Unexpected exit code. Continuing anyway..."
+            }
           }
 
       - name: Verify installations (Windows)
@@ -249,12 +255,45 @@ jobs:
           Write-Host "`nNASM:"
           nasm -v
           
-          Write-Host "`nVisual Studio:"
-          vswhere -latest -property displayName
-          vswhere -latest -property installationVersion
+          Write-Host "`n--- Visual Studio Information ---"
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           
-          Write-Host "`n=========================="
-          Write-Host "All prerequisites verified!"
+          Write-Host "`nVisual Studio 2022 Enterprise:"
+          $vsPath = & $vsWhere -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+          
+          if ([string]::IsNullOrEmpty($vsPath)) {
+            Write-Host "WARNING: VS 2022 Enterprise not found! Looking for any VS installation..."
+            $vsPath = & $vsWhere -latest -products * -property installationPath
+          }
+          
+          Write-Host "Installation path: $vsPath"
+          
+          $displayName = & $vsWhere -path "$vsPath" -property displayName
+          $version = & $vsWhere -path "$vsPath" -property installationVersion
+          $productId = & $vsWhere -path "$vsPath" -property productId
+          
+          Write-Host "Product: $displayName"
+          Write-Host "Version: $version"
+          Write-Host "Product ID: $productId"
+          
+          Write-Host "`nSearching for MSVC and Clang compilers:"
+          $clPath = & $vsWhere -path "$vsPath" -find "**/Hostx64/x64/cl.exe" | Select-Object -First 1
+          $clangPath = & $vsWhere -path "$vsPath" -find "**/bin/Hostx64/clang.exe" | Select-Object -First 1
+          
+          if ($clPath) {
+            Write-Host "  ✓ MSVC cl.exe: $clPath"
+          } else {
+            Write-Host "  ✗ MSVC cl.exe: NOT FOUND"
+          }
+          
+          if ($clangPath) {
+            Write-Host "  ✓ Clang: $clangPath"
+          } else {
+            Write-Host "  ✗ Clang: NOT FOUND (May need to install C++ workload)"
+          }
+          
+          Write-Host "`n=========================================="
+          Write-Host "Prerequisites verification completed!"
 
       - name: Setup MSVC (Windows)
         if: matrix.platform == 'win'
