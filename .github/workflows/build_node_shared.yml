@@ -89,6 +89,65 @@ jobs:
           repository: nodejs/node
           ref: v22.12.0
 
+      # Ref: https://github.com/nodejs/help/issues/5070
+      #      https://forum.qt.io/topic/162305/possible-marking-state.h-chromium-bug-when-compiling-qtwebengine-from-source/2
+      - name: Patch V8 for MSVC compatibility (Windows)
+        if: matrix.platform == 'win'
+        shell: powershell
+        run: |
+          Write-Host "========== Applying V8 MSVC Compatibility Patch =========="
+          Write-Host "Issue: MSVC C2352 error - 'a call of a non-static member function requires an object'"
+          Write-Host "Affected file: deps\v8\src\heap\cppgc\marking-state.h"
+          Write-Host "Reference: https://forum.qt.io/topic/162305"
+          Write-Host ""
+          
+          $file = "deps\v8\src\heap\cppgc\marking-state.h"
+          
+          if (!(Test-Path $file)) {
+            Write-Host "✗ ERROR: $file not found!"
+            exit 1
+          }
+          
+          Write-Host "Reading file..."
+          $lines = Get-Content $file
+          $modified = $false
+          $lineNumber = 0
+          
+          $newLines = foreach ($line in $lines) {
+            $lineNumber++
+            $originalLine = $line
+            
+            # Fix: MutatorMarkingState::BasicMarkingState::MarkNoPush(header)
+            # ->   BasicMarkingState::MarkNoPush(header)
+            if ($line -match 'MutatorMarkingState::BasicMarkingState::MarkNoPush\(') {
+              $line = $line -replace 'MutatorMarkingState::BasicMarkingState::MarkNoPush\(', 'BasicMarkingState::MarkNoPush('
+              Write-Host "  Line ${lineNumber}: Fixed qualified scope call"
+              $modified = $true
+            }
+            
+            # Fix: return MarkingStateBase::MarkNoPush(
+            # ->   return this->MarkNoPush(
+            if ($line -match '\s+return\s+MarkingStateBase::MarkNoPush\(') {
+              $line = $line -replace 'return\s+MarkingStateBase::MarkNoPush\(', 'return this->MarkNoPush('
+              Write-Host "  Line ${lineNumber}: Fixed base class call"
+              $modified = $true
+            }
+            
+            $line
+          }
+          
+          if ($modified) {
+            Set-Content $file -Value $newLines
+            Write-Host ""
+            Write-Host "✓ Successfully patched $file"
+          } else {
+            Write-Host ""
+            Write-Host "⚠ No matching patterns found (file may already be patched or have different code)"
+            Write-Host "Build will continue, but may still fail with C2352 error"
+          }
+          
+          Write-Host "========== Patch Complete =========="
+
       - name: Setup cross-compilation toolchain (Linux ARM64)
         if: matrix.platform == 'linux' && matrix.arch == 'arm64'
         run: |
