@@ -221,13 +221,17 @@ jobs:
           $exitCode = $LASTEXITCODE
           
           if ($exitCode -eq 0) {
-            Write-Host "`n✓ Visual Studio components installed successfully!"
+            Write-Host ""
+            Write-Host "[OK] Visual Studio components installed successfully!"
           } elseif ($exitCode -eq 3010) {
-            Write-Host "`n✓ Visual Studio components installed successfully! (Reboot requested but skipped)"
+            Write-Host ""
+            Write-Host "[OK] Visual Studio components installed successfully! (Reboot requested but skipped)"
           } elseif ($exitCode -eq 1641) {
-            Write-Host "`n✓ Visual Studio components installed successfully! (Restart initiated)"
+            Write-Host ""
+            Write-Host "[OK] Visual Studio components installed successfully! (Restart initiated)"
           } else {
-            Write-Host "`n⚠ VS Installer returned exit code: $exitCode"
+            Write-Host ""
+            Write-Host "[WARN] VS Installer returned exit code: $exitCode"
             if ($exitCode -eq 87) {
               Write-Host "Exit code 87 usually means components are already installed or parameters are incorrect."
               Write-Host "Continuing with build process..."
@@ -281,15 +285,15 @@ jobs:
           $clangPath = & $vsWhere -path "$vsPath" -find "**/bin/Hostx64/clang.exe" | Select-Object -First 1
           
           if ($clPath) {
-            Write-Host "  ✓ MSVC cl.exe: $clPath"
+            Write-Host "  [OK] MSVC cl.exe: $clPath"
           } else {
-            Write-Host "  ✗ MSVC cl.exe: NOT FOUND"
+            Write-Host "  [NOT FOUND] MSVC cl.exe"
           }
           
           if ($clangPath) {
-            Write-Host "  ✓ Clang: $clangPath"
+            Write-Host "  [OK] Clang: $clangPath"
           } else {
-            Write-Host "  ✗ Clang: NOT FOUND (May need to install C++ workload)"
+            Write-Host "  [NOT FOUND] Clang (May need to install C++ workload)"
           }
           
           Write-Host "`n=========================================="
