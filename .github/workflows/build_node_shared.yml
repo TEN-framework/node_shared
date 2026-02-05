@@ -70,14 +70,6 @@ jobs:
             container: ""
             lib_name: libnode.dll
             nproc_cmd: $env:NUMBER_OF_PROCESSORS
-          # Windows ARM64 builds (cross-compilation)
-          - os: windows-latest
-            platform: win
-            arch: arm64
-            compiler: msvc
-            container: ""
-            lib_name: libnode.dll
-            nproc_cmd: $env:NUMBER_OF_PROCESSORS
     
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container != '' && matrix.container || null }}
@@ -347,11 +339,7 @@ jobs:
         if: matrix.platform == 'win'
         shell: cmd
         run: |
-          if "${{ matrix.arch }}" == "arm64" (
-            vcbuild.bat dll arm64
-          ) else (
-            vcbuild.bat dll x64
-          )
+          vcbuild.bat dll x64
 
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
