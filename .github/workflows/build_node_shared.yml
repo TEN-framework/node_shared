@@ -337,9 +337,23 @@ jobs:
 
       - name: Configure and Build (Windows)
         if: matrix.platform == 'win'
-        shell: cmd
+        shell: powershell
         run: |
-          vcbuild.bat dll x64
+          # Refresh PATH to pick up winget-installed Python
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          
+          # Add Python to PATH explicitly (winget installs to this location)
+          $pythonPath = "$env:LOCALAPPDATA\Programs\Python\Python312"
+          if (Test-Path $pythonPath) {
+            $env:Path = "$pythonPath;$pythonPath\Scripts;$env:Path"
+          }
+          
+          # Verify Python is accessible
+          Write-Host "Python location: $(Get-Command python | Select-Object -ExpandProperty Source)"
+          python --version
+          
+          # Run vcbuild
+          cmd /c "vcbuild.bat dll x64"
 
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
