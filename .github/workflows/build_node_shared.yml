@@ -335,25 +335,24 @@ jobs:
 
           make -j$(${{ matrix.nproc_cmd }})
 
-      - name: Configure and Build (Windows)
+      - name: Add Python to PATH (Windows)
         if: matrix.platform == 'win'
         shell: powershell
         run: |
-          # Refresh PATH to pick up winget-installed Python
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          
-          # Add Python to PATH explicitly (winget installs to this location)
+          # Add winget-installed Python to GitHub Actions PATH
           $pythonPath = "$env:LOCALAPPDATA\Programs\Python\Python312"
           if (Test-Path $pythonPath) {
-            $env:Path = "$pythonPath;$pythonPath\Scripts;$env:Path"
+            echo "$pythonPath" >> $env:GITHUB_PATH
+            echo "$pythonPath\Scripts" >> $env:GITHUB_PATH
+            Write-Host "Added Python path: $pythonPath"
           }
-          
-          # Verify Python is accessible
-          Write-Host "Python location: $(Get-Command python | Select-Object -ExpandProperty Source)"
+
+      - name: Configure and Build (Windows)
+        if: matrix.platform == 'win'
+        shell: cmd
+        run: |
           python --version
-          
-          # Run vcbuild
-          cmd /c "vcbuild.bat dll x64"
+          vcbuild.bat dll x64
 
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
