@@ -354,14 +354,103 @@ jobs:
           python --version
           vcbuild.bat dll x64
 
+      - name: Build node.exe that links to libnode.dll (Windows)
+        if: matrix.platform == 'win'
+        shell: powershell
+        run: |
+          Write-Host "========== Building node.exe that uses libnode.dll =========="
+          Write-Host ""
+          Write-Host "The vcbuild.bat dll option creates libnode.dll but the default node.exe"
+          Write-Host "is statically linked. We need to build a thin node.exe that dynamically"
+          Write-Host "links to libnode.dll (which contains V8 and Node.js core)."
+          Write-Host ""
+          
+          # Create a minimal C++ launcher that calls node::Start() from libnode.dll
+          # This is based on src/node_main.cc but simplified for external linking
+          $launcherCode = @'
+          // Minimal Node.js launcher that links to libnode.dll
+          // This executable does NOT contain V8 - it uses V8 from libnode.dll
+          
+          #include <windows.h>
+          
+          namespace node {
+            int Start(int argc, char** argv);
+          }
+          
+          #ifdef _UNICODE
+          int wmain(int argc, wchar_t* wargv[]) {
+            // Convert wide args to UTF-8
+            char** argv = new char*[argc + 1];
+            for (int i = 0; i < argc; i++) {
+              int size = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, nullptr, 0, nullptr, nullptr);
+              argv[i] = new char[size];
+              WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, argv[i], size, nullptr, nullptr);
+            }
+            argv[argc] = nullptr;
+            
+            int result = node::Start(argc, argv);
+            
+            for (int i = 0; i < argc; i++) {
+              delete[] argv[i];
+            }
+            delete[] argv;
+            
+            return result;
+          }
+          #else
+          int main(int argc, char** argv) {
+            return node::Start(argc, argv);
+          }
+          #endif
+          '@
+          
+          Set-Location Release
+          
+          # Write the launcher source file
+          $launcherCode | Out-File -FilePath "node_launcher.cc" -Encoding UTF8
+          Write-Host "Created node_launcher.cc"
+          
+          # Compile the launcher and link against libnode.lib
+          Write-Host ""
+          Write-Host "Compiling node.exe (thin launcher linked to libnode.dll)..."
+          
+          # Use cl.exe to compile
+          $compileResult = & cl.exe /nologo /O2 /MD /EHsc /DUNICODE /D_UNICODE `
+            node_launcher.cc `
+            /link /OUT:node.exe `
+            libnode.lib `
+            /SUBSYSTEM:CONSOLE 2>&1
+          
+          Write-Host $compileResult
+          
+          if (Test-Path "node.exe") {
+            Write-Host ""
+            Write-Host "[OK] node.exe built successfully!"
+            Write-Host ""
+            Write-Host "Verifying node.exe dependencies:"
+            & dumpbin /dependents node.exe | Select-String -Pattern "libnode|KERNEL32|VCRUNTIME|api-ms"
+            
+            Write-Host ""
+            Write-Host "File sizes comparison:"
+            $nodeSize = (Get-Item "node.exe").Length / 1KB
+            $libSize = (Get-Item "libnode.dll").Length / 1MB
+            Write-Host "  node.exe:    $([math]::Round($nodeSize, 2)) KB (thin launcher, no V8)"
+            Write-Host "  libnode.dll: $([math]::Round($libSize, 2)) MB (contains V8 and Node.js core)"
+          } else {
+            Write-Host ""
+            Write-Host "[ERROR] Failed to build node.exe"
+            exit 1
+          }
+
       - name: Package assets
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           if [ "${{ matrix.platform }}" = "win" ]; then
             cd Release
 
-            # Package shared libraries into zip archive
-            7z a node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }} libnode.lib node.lib
+            # Package shared libraries and node.exe into zip archive
+            # node.exe is now dynamically linked to libnode.dll (does not contain V8)
+            7z a node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip ${{ matrix.lib_name }} libnode.lib node.lib node.exe
           else
             cd out/Release
 
