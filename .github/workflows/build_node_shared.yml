@@ -375,4 +375,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            "**/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip"
+            **/node-shared-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.compiler }}.zip
